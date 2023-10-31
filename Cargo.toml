@@ -1,0 +1,11 @@
+[package]
+name = "dyad_reducer"
+version = "0.1.0"
+edition = "2021"
+description = "Finds the shortest text (by character length) that includes all pairs of non-whitespace characters from a source text using only words from that source text."
+readme = "README.md"
+license = "Apache-2.0"
+repository = "https://github.com/csditchfield/dyad-reducer"
+
+[dependencies]
+clap = { version = "4.4.7", features = ["derive"] }
