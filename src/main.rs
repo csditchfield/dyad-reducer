@@ -57,7 +57,7 @@ struct Arguments {
 ///
 /// Returns a buffered reader on the contents of the file or an error if the file could not be opened.
 fn open_file(path: &PathBuf) -> Result<BufReader<File>, SolverError> {
-    match File::open(&path) {
+    match File::open(path) {
         Ok(file) => Ok(BufReader::new(file)),
         Err(error) => Err(SolverError::new(
             format!("Could not open file: {}.", path.display()),
@@ -95,7 +95,7 @@ fn main() -> Result<(), LetterPairsError> {
                 ),
             });
         };
-        output.push_str(&format!("Solution validated successfully.\n"));
+        output.push_str(&String::from("Solution validated successfully.\n"));
     }
 
     match output_file {

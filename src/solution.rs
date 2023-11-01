@@ -67,7 +67,7 @@ impl Solution {
     ///
     /// Checks that the solution is complete and uses only Words from the Model.
     pub fn is_valid(&self, model: &Model) -> bool {
-        self.words.difference(model.words()).count() == 0 && self.is_complete(&model)
+        self.words.difference(model.words()).count() == 0 && self.is_complete(model)
     }
 
     /// Returns a Hashset of the Words in the solution.
