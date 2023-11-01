@@ -20,6 +20,7 @@ use crate::error::{ErrorKind, SolverError};
 /// A Word does not have meaning outside of the context of a
 /// Model, hence typically they are created by Models.
 #[derive(Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[allow(clippy::len_without_is_empty)]
 pub struct Word {
     pairs: Vec<Rc<CharacterPair>>,
 }
@@ -31,9 +32,8 @@ impl Display for Word {
             acc
         });
 
-        match self.pairs.last() {
-            Some(x) => repr.push(x.1),
-            None => (),
+        if let Some(x) = self.pairs.last() {
+            repr.push(x.1)
         };
 
         write!(f, "{repr}")
@@ -177,19 +177,16 @@ impl Model {
                     let mut word_pairs = Vec::new();
                     let mut prev_char = None;
                     for c in str_word.chars() {
-                        match prev_char {
-                            Some(p) => {
-                                let new_pair = Rc::new((p, c));
-                                let pair = match pairs.get(&new_pair) {
-                                    Some(p) => p.clone(),
-                                    None => {
-                                        pairs.insert(new_pair.clone());
-                                        new_pair
-                                    }
-                                };
-                                word_pairs.push(pair);
-                            }
-                            None => (),
+                        if let Some(p) = prev_char {
+                            let new_pair = Rc::new((p, c));
+                            let pair = match pairs.get(&new_pair) {
+                                Some(p) => p.clone(),
+                                None => {
+                                    pairs.insert(new_pair.clone());
+                                    new_pair
+                                }
+                            };
+                            word_pairs.push(pair);
                         };
                         prev_char = Some(c);
                     }

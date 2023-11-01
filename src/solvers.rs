@@ -27,7 +27,7 @@ fn word_score_new_pairs(word: &Word, covered_pairs: &HashSet<Rc<CharacterPair>>)
 pub fn greedy_most_valuable_word(model: &Model) -> Result<Solution, SolverError> {
     let mut solution = Solution::default();
 
-    while !solution.is_complete(&model) {
+    while !solution.is_complete(model) {
         let covered_pairs = solution.pairs();
 
         let mut unchosen_words = model.words().difference(solution.words());
@@ -44,7 +44,7 @@ pub fn greedy_most_valuable_word(model: &Model) -> Result<Solution, SolverError>
         let mut high_score = word_score_new_pairs(best_word, &covered_pairs);
 
         for word in unchosen_words {
-            let score = word_score_new_pairs(&word, &covered_pairs);
+            let score = word_score_new_pairs(word, &covered_pairs);
             if (score > high_score) || (score == high_score && word.len() < best_word.len()) {
                 high_score = score;
                 best_word = word;
