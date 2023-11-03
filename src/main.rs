@@ -11,6 +11,7 @@ use std::{
     fs::File,
     io::{BufReader, Write},
     path::PathBuf,
+    time::Instant,
 };
 
 /// An error returned by main().
@@ -74,16 +75,28 @@ fn main() -> Result<(), LetterPairsError> {
         Some(path) => Some(File::create(path)?),
         None => None,
     };
+
+    let model_start = Instant::now();
     let reader = open_file(&args.path)?;
     let model = Model::new(reader)?;
+    let model_end = Instant::now();
     let solution = greedy_most_valuable_word(&model)?;
+    let solver_end = Instant::now();
 
     if args.statistics {
         output.push_str(&format!(
-            "File {} stats:\nNumber of unique character pairs:{}\nNumber of unique words: {}\n",
+            "File {} stats:\nNumber of unique character pairs: {}\nNumber of unique words: {}\nModel creation took {} seconds.\n\n",
             args.path.display(),
             model.pairs().len(),
-            model.words().len()
+            model.words().len(),
+	    model_end.duration_since(model_start).as_secs_f32(),
+        ));
+        output.push_str(&format!(
+            "Solution Stats:\nSolution calculation took {} seconds.\nNumber of unique character pairs: {}\nNumber of words: {}\nTotal length: {}\n",
+	    solver_end.duration_since(model_end).as_secs_f32(),
+	    solution.pairs().len(),
+	    solution.words().len(),
+	    solution.len(),
         ));
     };
 
@@ -103,7 +116,7 @@ fn main() -> Result<(), LetterPairsError> {
             f.write_all(solution.to_string().as_bytes())?;
         }
         None => {
-            output.push_str(&format!("{}\n", solution));
+            output.push_str(&format!("\nSolution:\n{}", solution));
         }
     };
     println!("{}", output);
