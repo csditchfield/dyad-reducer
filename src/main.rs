@@ -4,6 +4,7 @@ use clap::Parser;
 use dyad_reducer::{
     error::{ErrorKind, SolverError},
     solvers::greedy_most_valuable_word,
+    stats::Sample,
     text_model::Model,
 };
 use std::{
@@ -52,6 +53,10 @@ struct Arguments {
     /// Perform a validation step to ensure the solution is valid.
     #[arg(short, long)]
     validate: bool,
+
+    /// Calculate the solution REPEAT times and output the shortest solution.
+    #[arg(short, long)]
+    repeat: Option<usize>,
 }
 
 /// Opens a file path for reading.
@@ -80,8 +85,7 @@ fn main() -> Result<(), LetterPairsError> {
     let reader = open_file(&args.path)?;
     let model = Model::new(reader)?;
     let model_end = Instant::now();
-    let solution = greedy_most_valuable_word(&model)?;
-    let solver_end = Instant::now();
+    let sample = Sample::new(&greedy_most_valuable_word, &model, &1);
 
     if args.statistics {
         output.push_str(&format!(
@@ -91,33 +95,34 @@ fn main() -> Result<(), LetterPairsError> {
             model.words().len(),
 	    model_end.duration_since(model_start).as_secs_f32(),
         ));
-        output.push_str(&format!(
-            "Solution Stats:\nSolution calculation took {} seconds.\nNumber of unique character pairs: {}\nNumber of words: {}\nTotal length: {}\n",
-	    solver_end.duration_since(model_end).as_secs_f32(),
-	    solution.pairs().len(),
-	    solution.words().len(),
-	    solution.len(),
-        ));
+        output.push_str(&sample.calculate_stats().to_string());
+
+        // Print stats of best solution.
+        todo!();
     };
 
     if args.validate {
-        if !solution.is_valid(&model) {
+        let failures = sample.validate(&model);
+        if failures > 0 {
             return Err(LetterPairsError {
-                message: String::from(
-                    "The greedy most valuable word algorithm produced an invalid solution.",
+                message: format!(
+                    "The greedy most valuable word algorithm produced {} invalid solution(s).",
+                    failures,
                 ),
             });
         };
         output.push_str(&String::from("Solution validated successfully.\n"));
     }
 
-    match output_file {
-        Some(mut f) => {
-            f.write_all(solution.to_string().as_bytes())?;
-        }
-        None => {
-            output.push_str(&format!("\nSolution:\n{}", solution));
-        }
+    if let Some(shortest) = sample.best_solution() {
+        match output_file {
+            Some(mut f) => {
+                f.write_all(shortest.to_string().as_bytes())?;
+            }
+            None => {
+                output.push_str(&format!("\nSolution:\n{}", shortest));
+            }
+        };
     };
     println!("{}", output);
     Ok(())

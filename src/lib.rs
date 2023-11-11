@@ -4,7 +4,7 @@
 pub mod error;
 pub mod solution;
 pub mod solvers;
-pub mod text_model;
-
+pub mod stats;
 #[cfg(test)]
 mod test_reader;
+pub mod text_model;
