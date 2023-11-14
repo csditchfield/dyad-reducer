@@ -35,6 +35,11 @@ impl Display for Solution {
 }
 
 impl Solution {
+    /// Create a Solution populated with the given words.
+    pub fn new(words: HashSet<Rc<Word>>) -> Self {
+        Self { words }
+    }
+
     /// Adds a `Word` to the solution.
     pub fn add_word(&mut self, word: Rc<Word>) -> bool {
         self.words.insert(word)
@@ -98,6 +103,14 @@ pub fn create_test_solution(model: &Model, words: Vec<&str>) -> Solution {
 mod tests {
     use super::*;
     use crate::text_model::Model;
+
+    #[test]
+    fn new() {
+        let model = Model::build_test_model("cat abs cab");
+        let words = model.words();
+        let solution = Solution::new(words.clone());
+        assert_eq!(solution.words(), words);
+    }
 
     #[test]
     fn display_empty() {
