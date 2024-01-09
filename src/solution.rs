@@ -7,7 +7,7 @@ use std::{
     rc::Rc,
 };
 
-#[derive(Default, Debug)]
+#[derive(Clone, Default, Debug, Eq, PartialEq)]
 /// A collection of `text_model::Words` representing a solution to the character pair problem.
 ///
 /// A solution is not necessarily complete.

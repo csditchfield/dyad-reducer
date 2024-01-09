@@ -1,11 +1,23 @@
 //! Algorithms that solve the character pair problem.
 
 use crate::{
-    error::{ErrorKind, SolverError},
+    error::GenericError,
     solution::Solution,
     text_model::{CharacterPair, Model, Word},
 };
 use std::{collections::HashSet, rc::Rc};
+
+/// An error returned by a solver.
+pub type SolverError = GenericError<ErrorKind>;
+
+/// An enum specifying the category of error.
+#[derive(Debug, Eq, PartialEq)]
+pub enum ErrorKind {
+    /// The text Model is inconsistent.
+    ///
+    /// e.g. the solution is not complete, but there are no more unchosen words to choose from.
+    ConsistencyError,
+}
 
 /// Creates a `Solution` from a `Model` by choosing all words in the `Model`.
 pub fn whole_text(model: &Model) -> Result<Solution, SolverError> {
@@ -41,7 +53,7 @@ pub fn greedy_most_valuable_word(model: &Model) -> Result<Solution, SolverError>
             None => {
                 return Err(SolverError::new(
                     String::from("Solution is incomplete, but there are no more unchosen words."),
-                    ErrorKind::ModelConsistencyError,
+                    ErrorKind::ConsistencyError,
                     None,
                 ))
             }
