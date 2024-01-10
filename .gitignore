@@ -33,3 +33,6 @@ target/
 .Trashes
 ehthumbs.db
 Thumbs.db
+
+# A directory to dump personal notes, planning, etc.
+ignore/

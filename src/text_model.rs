@@ -10,7 +10,17 @@ use std::{
     rc::Rc,
 };
 
-use crate::error::{ErrorKind, SolverError};
+use crate::error::GenericError;
+
+/// An error raised by the text_model library.
+pub type ModelError = GenericError<ErrorKind>;
+
+/// The kind of error raised.
+#[derive(Debug, Eq, PartialEq)]
+pub enum ErrorKind {
+    /// Could not read from file.
+    FileReadingError,
+}
 
 /// A Word.
 ///
@@ -118,7 +128,7 @@ pub type CharacterPair = (char, char);
 /// use std::rc::Rc;
 /// use dyad_reducer::text_model::Model;
 ///
-/// # fn main() -> Result<(), dyad_reducer::error::SolverError> {
+/// # fn main() -> Result<(), dyad_reducer::text_model::ModelError> {
 /// let text = "Cats are great!\ncats are cute in caps.";
 /// let model = Model::try_from(text)?;
 ///
@@ -127,7 +137,7 @@ pub type CharacterPair = (char, char);
 /// # Ok(())
 /// # }
 /// ```
-#[derive(Debug, Default)]
+#[derive(Clone, Debug, Default)]
 pub struct Model {
     words: HashSet<Rc<Word>>,
     pairs: HashSet<Rc<CharacterPair>>,
@@ -135,7 +145,7 @@ pub struct Model {
 }
 
 impl TryFrom<&str> for Model {
-    type Error = SolverError;
+    type Error = ModelError;
 
     fn try_from(value: &str) -> Result<Self, Self::Error> {
         Model::try_from(value.as_bytes())
@@ -143,7 +153,7 @@ impl TryFrom<&str> for Model {
 }
 
 impl TryFrom<&[u8]> for Model {
-    type Error = SolverError;
+    type Error = ModelError;
 
     fn try_from(value: &[u8]) -> Result<Self, Self::Error> {
         Model::new(value)
@@ -154,7 +164,7 @@ impl Model {
     /// Builds a `Model` from a type that implements `std::io::BufRead`.
     ///
     /// Raises any `io::Error` that results from reading the `BufRead`
-    pub fn new(reader: impl BufRead) -> Result<Model, SolverError> {
+    pub fn new(reader: impl BufRead) -> Result<Model, ModelError> {
         let mut pairs: HashSet<Rc<CharacterPair>> = HashSet::new();
         let mut words: HashSet<Rc<Word>> = HashSet::new();
         let mut pair_mapping: HashMap<Rc<CharacterPair>, HashSet<Rc<Word>>> = HashMap::new();
@@ -164,7 +174,7 @@ impl Model {
             let line = match outcome {
                 Ok(x) => x,
                 Err(e) => {
-                    return Err(SolverError::new(
+                    return Err(ModelError::new(
                         String::from("Could not read file."),
                         ErrorKind::FileReadingError,
                         Some(Box::new(e)),
@@ -431,7 +441,7 @@ mod tests {
             ));
             let error =
                 Model::new(input).expect_err("Model creation should fail when reading test reader");
-            assert_eq!(*error.kind(), crate::error::ErrorKind::FileReadingError);
+            assert_eq!(*error.kind(), ErrorKind::FileReadingError);
             let source = error.source().expect("error should have source io error.");
             assert!(source.to_string().contains(&message));
         }

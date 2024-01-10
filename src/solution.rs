@@ -7,7 +7,7 @@ use std::{
     rc::Rc,
 };
 
-#[derive(Default, Debug)]
+#[derive(Clone, Default, Debug, Eq, PartialEq)]
 /// A collection of `text_model::Words` representing a solution to the character pair problem.
 ///
 /// A solution is not necessarily complete.
@@ -78,6 +78,16 @@ impl Solution {
     /// Returns a Hashset of the Words in the solution.
     pub fn words(&self) -> &HashSet<Rc<Word>> {
         &self.words
+    }
+
+    /// Returns the total character length of the solution.
+    pub fn len(&self) -> usize {
+        self.words().iter().map(|x| x.len()).sum::<usize>() + self.words().len().saturating_sub(1)
+    }
+
+    /// Returns true if the solution contains no words.
+    pub fn is_empty(&self) -> bool {
+        self.words().is_empty()
     }
 }
 
@@ -364,5 +374,46 @@ mod tests {
         let word = Word::build_test_word("oven");
         solution.add_word(word);
         assert!(solution.is_complete(&model));
+    }
+
+    #[test]
+    fn len_empty() {
+        let solution = Solution::default();
+        assert_eq!(solution.len(), 0);
+    }
+
+    #[test]
+    fn len_one_word() {
+        let model = Model::build_test_model("cat");
+        let solution = create_test_solution(&model, vec!["cat"]);
+        assert_eq!(solution.len(), 3);
+    }
+
+    #[test]
+    fn len_words() {
+        let model = Model::build_test_model("cat abs hutch");
+        let solution = create_test_solution(&model, vec!["cat", "abs", "hutch"]);
+        assert_eq!(solution.len(), 13);
+    }
+
+    #[test]
+    fn len_words_to_string() {
+        let model = Model::build_test_model("cat abs hutch");
+        let solution = create_test_solution(&model, vec!["cat", "abs", "hutch"]);
+        assert_eq!(solution.len(), solution.to_string().len());
+    }
+
+    #[test]
+    fn is_empty_true() {
+        let solution = Solution::default();
+        assert!(solution.is_empty());
+    }
+
+    #[test]
+    fn is_empty_false() {
+        let mut solution = Solution::default();
+        let word = Word::build_test_word("cat");
+        solution.add_word(word);
+        assert!(!solution.is_empty());
     }
 }
