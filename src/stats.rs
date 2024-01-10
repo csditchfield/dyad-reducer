@@ -1,5 +1,8 @@
 //! Utilities for calculating statistics about Solution generation.
-use crate::{error::GenericError, solution::Solution, solvers::SolverError, text_model::Model};
+use crate::{
+    consts::BILLION_SQUARED, error::GenericError, solution::Solution, solvers::SolverError,
+    text_model::Model,
+};
 use std::{
     fmt::{self, Display, Formatter},
     time::{Duration, Instant},
@@ -461,9 +464,9 @@ impl Sample {
         }
     }
 
-    fn nanos_to_secs(nanos: u128) -> f64 {
-        let billion = 1_000_000_000;
-        (nanos / billion) as f64 + ((nanos % billion) as f64 / billion as f64)
+    fn nanos_squared_to_secs_squared(nanos_squared: u128) -> f64 {
+        (nanos_squared / BILLION_SQUARED) as f64
+            + ((nanos_squared % BILLION_SQUARED) as f64 / BILLION_SQUARED as f64)
     }
 
     /// Calculate the statistics of this Sample.
@@ -549,7 +552,7 @@ impl Sample {
                             .expect("Durations should have a variance when there are solutions.");
                     let std_dev = variance
                     .as_ref()
-                    .map(|variance| Sample::nanos_to_secs(*variance).sqrt())
+                    .map(|variance| Sample::nanos_squared_to_secs_squared(*variance).sqrt())
                     .map_err(|_e| {
                     StatsError::new(
                         String::from(
@@ -1225,7 +1228,8 @@ mod tests {
 
     mod sample_tests {
         use crate::{
-            solution::create_test_solution, solvers, solvers::ErrorKind as SolverErrorKind,
+            consts::BILLION, solution::create_test_solution, solvers,
+            solvers::ErrorKind as SolverErrorKind,
         };
         use std::io::BufReader;
 
@@ -1316,7 +1320,7 @@ mod tests {
                 min_duration: t1_duration,
                 max_duration: t4_duration,
                 uncorrected_duration_variance: Ok(expected_duration_variance),
-                uncorrected_duration_standard_deviation: Ok(Sample::nanos_to_secs(
+                uncorrected_duration_standard_deviation: Ok(Sample::nanos_squared_to_secs_squared(
                     expected_duration_variance,
                 )
                 .sqrt()),
@@ -1809,7 +1813,7 @@ mod tests {
 
         #[test]
         fn calculate_uncorrected_variance_duration_multiple() {
-            let bill = 1_000_000_000 as u64;
+            let bill = BILLION as u64;
             let one = 10 * bill + 50 as u64;
             let two = 20 * bill + 123 as u64;
             let three = 100 * bill + 85213 as u64;
@@ -1832,6 +1836,35 @@ mod tests {
                     + (two as i128 - mean as i128).pow(2)
                     + (three as i128 - mean as i128).pow(2)
                     + (four as i128 - mean as i128).pow(2))
+                    / 4) as u128)),
+            );
+        }
+
+        #[test]
+        fn calculate_uncorrected_variance_duration_multiple_fractional() {
+            let bill = BILLION as f64;
+            let one = (0.3455559 * bill) as u64;
+            let two = (0.3469258 * bill) as u64;
+            let three = (0.3461224 * bill) as u64;
+            let four = (0.34611992 * bill) as u64;
+
+            let mut durations = vec![
+                Duration::from_nanos(one),
+                Duration::from_nanos(two),
+                Duration::from_nanos(three),
+                Duration::from_nanos(four),
+            ];
+
+            let mean = ((one + two + three + four) / 4) as i128;
+            let mean_duration = Sample::calculate_mean_duration(&durations)
+                .expect("Non empty sample should have mean.")
+                .expect("mean should not overflow");
+            assert_eq!(
+                Sample::calculate_uncorrected_variance_duration(&mut durations, &mean_duration),
+                Some(Ok((((one as i128 - mean).pow(2)
+                    + (two as i128 - mean).pow(2)
+                    + (three as i128 - mean).pow(2)
+                    + (four as i128 - mean).pow(2))
                     / 4) as u128)),
             );
         }
@@ -1869,23 +1902,32 @@ mod tests {
         }
 
         #[test]
-        fn nanos_to_secs_zero() {
-            assert_eq!(Sample::nanos_to_secs(0), 0 as f64);
+        fn nanos_squared_to_secs_squared_zero() {
+            assert_eq!(Sample::nanos_squared_to_secs_squared(0), 0 as f64);
         }
 
         #[test]
-        fn nanos_to_secs_zero_secs() {
-            assert_eq!(Sample::nanos_to_secs(401_781_847), 0.401781847);
+        fn nanos_squared_to_secs_squared_zero_secs() {
+            assert_eq!(
+                Sample::nanos_squared_to_secs_squared(401_781_847),
+                0.000000000401781847
+            );
         }
 
         #[test]
-        fn nanos_to_secs_zero_nanos() {
-            assert_eq!(Sample::nanos_to_secs(10_000_000_000), 10.0);
+        fn nanos_squared_to_secs_squared_zero_nanos() {
+            assert_eq!(
+                Sample::nanos_squared_to_secs_squared(10_000_000_000),
+                0.00000001
+            );
         }
 
         #[test]
-        fn nanos_to_secs_both() {
-            assert_eq!(Sample::nanos_to_secs(6_000_345_738), 6.000345738);
+        fn nanos_squared_to_secs_squared_both() {
+            assert_eq!(
+                Sample::nanos_squared_to_secs_squared(6_000_345_738),
+                0.000000006000345738
+            );
         }
     }
 }
