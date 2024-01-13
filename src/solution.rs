@@ -240,16 +240,16 @@ mod tests {
         let model = Model::build_test_model("cat abs hutch oven cab cap much coven");
         let solution = create_test_solution(&model, vec!["cat", "abs", "oven", "much"]);
         let expected: HashSet<Rc<CharacterPair>> = vec![
-            ('c', 'a'),
-            ('a', 't'),
-            ('a', 'b'),
-            ('b', 's'),
-            ('o', 'v'),
-            ('v', 'e'),
-            ('e', 'n'),
-            ('m', 'u'),
-            ('u', 'c'),
-            ('c', 'h'),
+            CharacterPair::new('c', 'a'),
+            CharacterPair::new('a', 't'),
+            CharacterPair::new('a', 'b'),
+            CharacterPair::new('b', 's'),
+            CharacterPair::new('o', 'v'),
+            CharacterPair::new('v', 'e'),
+            CharacterPair::new('e', 'n'),
+            CharacterPair::new('m', 'u'),
+            CharacterPair::new('u', 'c'),
+            CharacterPair::new('c', 'h'),
         ]
         .into_iter()
         .map(|x| Rc::new(x))
@@ -262,10 +262,14 @@ mod tests {
     fn pairs_duplicates() {
         let model = Model::build_test_model("cat abs hutch oven cab cap much coven");
         let solution = create_test_solution(&model, vec!["cat", "cab"]);
-        let expected: HashSet<Rc<CharacterPair>> = vec![('c', 'a'), ('a', 't'), ('a', 'b')]
-            .into_iter()
-            .map(|x| Rc::new(x))
-            .collect();
+        let expected: HashSet<Rc<CharacterPair>> = vec![
+            CharacterPair::new('c', 'a'),
+            CharacterPair::new('a', 't'),
+            CharacterPair::new('a', 'b'),
+        ]
+        .into_iter()
+        .map(|x| Rc::new(x))
+        .collect();
 
         assert_eq!(solution.pairs(), expected);
     }

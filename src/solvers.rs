@@ -16,7 +16,7 @@ pub enum ErrorKind {
     /// The text Model is inconsistent.
     ///
     /// e.g. the solution is not complete, but there are no more unchosen words to choose from.
-    ConsistencyError,
+    ModelConsistencyError,
 }
 
 /// Creates a `Solution` from a `Model` by choosing all words in the `Model`.
@@ -42,7 +42,18 @@ fn word_score_new_pairs(word: &Word, covered_pairs: &HashSet<Rc<CharacterPair>>)
 /// The value of a word is determined by how many unchosen `CharacterPairs`
 /// it contains.
 pub fn greedy_most_valuable_word(model: &Model) -> Result<Solution, SolverError> {
-    let mut solution = Solution::default();
+    let unique_words = match model.find_words_with_unique_pairs() {
+        Ok(words) => words,
+        Err(err) => {
+            return Err(SolverError::new(
+                String::from("could not compute solution, model is internally inconsistent"),
+                ErrorKind::ModelConsistencyError,
+                Some(Box::new(err)),
+            ))
+        }
+    };
+
+    let mut solution = Solution::new(unique_words);
 
     while !solution.is_complete(model) {
         let covered_pairs = solution.pairs();
@@ -53,7 +64,7 @@ pub fn greedy_most_valuable_word(model: &Model) -> Result<Solution, SolverError>
             None => {
                 return Err(SolverError::new(
                     String::from("Solution is incomplete, but there are no more unchosen words."),
-                    ErrorKind::ConsistencyError,
+                    ErrorKind::ModelConsistencyError,
                     None,
                 ))
             }
