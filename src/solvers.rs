@@ -24,16 +24,43 @@ pub fn whole_text(model: &Model) -> Result<Solution, SolverError> {
     Ok(Solution::new(model.words().clone()))
 }
 
-fn word_score_new_pairs(word: &Word, covered_pairs: &HashSet<Rc<CharacterPair>>) -> usize {
+fn word_score_new_pairs(word: &Word, unchosen_pairs: &HashSet<Rc<CharacterPair>>) -> usize {
     let mut duplicates = HashSet::new();
     let mut score = 0;
     for pair in word.pairs() {
-        if !covered_pairs.contains(pair) && !duplicates.contains(pair) {
+        if unchosen_pairs.contains(pair) && !duplicates.contains(pair) {
             score += 1;
             duplicates.insert(pair);
         }
     }
     score
+}
+
+// This should be tested with every new scoring algorithm.
+fn find_best_word(
+    judge: &dyn Fn(&Word, &HashSet<Rc<CharacterPair>>) -> usize,
+    unchosen_words: &HashSet<Rc<Word>>,
+    unchosen_pairs: &HashSet<Rc<CharacterPair>>,
+) -> Option<Rc<Word>> {
+    let mut words_iter = unchosen_words.iter();
+    if let Some(mut best_word) = words_iter.next() {
+        let mut high_score = judge(best_word, unchosen_pairs);
+
+        for word in words_iter {
+            let score = judge(word, unchosen_pairs);
+            if (score > high_score)
+                || (score == high_score
+                    && (word.len() < best_word.len()
+                        || (word.len() == best_word.len() && word < best_word)))
+            {
+                high_score = score;
+                best_word = word;
+            };
+        }
+
+        return Some(best_word.clone());
+    };
+    None
 }
 
 /// Creates a `Solution` from a `text_model::Model` by repeatedly choosing
@@ -54,32 +81,25 @@ pub fn greedy_most_valuable_word(model: &Model) -> Result<Solution, SolverError>
     };
 
     let mut solution = Solution::new(unique_words);
+    let mut unchosen_pairs = solution.unchosen_pairs(model);
+    let mut unchosen_words = solution.unchosen_words(model);
 
-    while !solution.is_complete(model) {
-        let covered_pairs = solution.pairs();
-
-        let mut unchosen_words = model.words().difference(solution.words());
-        let mut best_word: &Rc<Word> = match unchosen_words.next() {
-            Some(x) => x,
-            None => {
-                return Err(SolverError::new(
-                    String::from("Solution is incomplete, but there are no more unchosen words."),
-                    ErrorKind::ModelConsistencyError,
-                    None,
-                ))
+    while !unchosen_pairs.is_empty() {
+        if let Some(best_word) =
+            find_best_word(&word_score_new_pairs, &unchosen_words, &unchosen_pairs)
+        {
+            unchosen_words.remove(&best_word);
+            for pair in best_word.pairs() {
+                unchosen_pairs.remove(pair);
             }
-        };
-        let mut high_score = word_score_new_pairs(best_word, &covered_pairs);
-
-        for word in unchosen_words {
-            let score = word_score_new_pairs(word, &covered_pairs);
-            if (score > high_score) || (score == high_score && word.len() < best_word.len()) {
-                high_score = score;
-                best_word = word;
-            };
+            solution.add_word(best_word);
+        } else {
+            return Err(SolverError::new(
+		format!("Model is inconsistant, there are {} pairs remaining to cover, but no more unchosen words.", unchosen_pairs.len()),
+		ErrorKind::ModelConsistencyError,
+		None,
+            ));
         }
-
-        solution.add_word(best_word.clone());
     }
 
     Ok(solution)
@@ -88,7 +108,6 @@ pub fn greedy_most_valuable_word(model: &Model) -> Result<Solution, SolverError>
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::solution::create_test_solution;
     use std::io;
 
     mod whole_text {
@@ -109,91 +128,168 @@ mod tests {
         }
     }
 
-    mod greedy_most_valuable_word {
+    mod greedy_algorithms {
         use super::*;
+        use crate::solution::build_test_model_and_solution;
 
-        #[test]
-        fn word_score_new_pairs_all_chosen() {
-            let model = Model::build_test_model("cat at ca");
-            let solution = create_test_solution(&model, vec!["at", "ca"]);
+        fn build_test_fixtures(
+            model_text: &str,
+            chosen_words: Vec<&str>,
+            word: &str,
+        ) -> (Model, Solution, Rc<Word>) {
+            let (model, solution) = build_test_model_and_solution(model_text, chosen_words);
             let word = model
-                .words()
-                .iter()
-                .find(|x| x.to_string() == "cat")
-                .expect("model should contain test word");
-            assert_eq!(word_score_new_pairs(&word, &solution.pairs()), 0);
+                .find_word_str(word)
+                .expect(&format!("should contain \"{}\"", word));
+            (model, solution, word)
         }
 
         #[test]
-        fn word_score_new_pairs_none_chosen() {
-            let model = Model::build_test_model("cat oven mutch cab abs cap");
-            let solution = create_test_solution(&model, vec!["oven", "mutch"]);
-            let word = model
-                .words()
-                .iter()
-                .find(|x| x.to_string() == "cat")
-                .expect("model should contain test word");
-            assert_eq!(word_score_new_pairs(&word, &solution.pairs()), 2);
+        fn find_best_word_empty_all() {
+            let (model, solution) =
+                build_test_model_and_solution("cat abs cab", vec!["cat", "abs", "cab"]);
+            let best_word = find_best_word(
+                &word_score_new_pairs,
+                &solution.unchosen_words(&model),
+                &solution.unchosen_pairs(&model),
+            );
+            assert_eq!(best_word, None);
         }
 
         #[test]
-        fn word_score_new_pairs_one_chosen() {
-            let model = Model::build_test_model("cat cab abs cap");
-            let solution = create_test_solution(&model, vec!["cab", "abs"]);
-            let word = model
-                .words()
-                .iter()
-                .find(|x| x.to_string() == "cat")
-                .expect("model should contain test word");
-            assert_eq!(word_score_new_pairs(&word, &solution.pairs()), 1);
+        fn find_best_word_empty_words() {
+            let (model, solution) =
+                build_test_model_and_solution("cat abs cab", vec!["cat", "abs", "cab"]);
+            let best_word = find_best_word(
+                &word_score_new_pairs,
+                &solution.unchosen_words(&model),
+                &solution.pairs(),
+            );
+            assert_eq!(best_word, None);
         }
 
         #[test]
-        fn word_score_new_pairs_empty_solution() {
-            let model = Model::build_test_model("cat oven mutch cab abs cap");
-            let solution = Solution::default();
-            let word = model
-                .words()
-                .iter()
-                .find(|x| x.to_string() == "cat")
-                .expect("model should contain test word");
-            assert_eq!(word_score_new_pairs(&word, &solution.pairs()), 2);
+        fn find_best_word_empty_pairs() {
+            let (model, solution, word) = build_test_fixtures("cat abs cab", Vec::new(), "abs");
+            let best_word = find_best_word(
+                &word_score_new_pairs,
+                &solution.unchosen_words(&model),
+                &HashSet::new(),
+            );
+            assert_eq!(best_word, Some(word));
         }
 
-        #[test]
-        fn word_score_new_pairs_repeated_pairs() {
-            let test_word = "bananananana";
-            let model = Model::build_test_model(test_word);
-            let solution = Solution::default();
-            let word = model
-                .words()
-                .iter()
-                .find(|x| x.to_string() == test_word)
-                .expect("model should contain test word");
-            assert_eq!(word_score_new_pairs(&word, &solution.pairs()), 3);
-        }
+        mod greedy_most_valuable_word {
+            use super::*;
 
-        #[test]
-        fn empty() {
-            let model = Model::new(io::empty()).expect("reading empty should not fail");
-            assert!(greedy_most_valuable_word(&model)
-                .expect("test should produce solution")
-                .is_valid(&model));
-        }
+            #[test]
+            fn word_score_new_pairs_all_chosen() {
+                let (model, solution, word) =
+                    build_test_fixtures("cat at ca", vec!["at", "ca"], "cat");
+                assert_eq!(
+                    word_score_new_pairs(&word, &solution.unchosen_pairs(&model)),
+                    0
+                );
+            }
 
-        #[test]
-        fn one_word() {
-            let model = Model::build_test_model("cat");
-            let solution = greedy_most_valuable_word(&model).expect("test should produce solution");
-            assert!(solution.is_valid(&model));
-            assert_eq!(solution.words().iter().count(), 1);
-        }
+            #[test]
+            fn word_score_new_pairs_none_chosen() {
+                let (model, solution, word) =
+                    build_test_fixtures("cat oven mutch cab abs cap", vec!["oven", "mutch"], "cat");
+                assert_eq!(
+                    word_score_new_pairs(&word, &solution.unchosen_pairs(&model)),
+                    2
+                );
+            }
 
-        #[test]
-        fn multiple() {
-            let model = Model::build_test_model("cat abs hutch oven cab cap much coven");
-            let solution = greedy_most_valuable_word(&model).expect("test should produce solution");
-            assert!(solution.is_valid(&model));
+            #[test]
+            fn word_score_new_pairs_one_chosen() {
+                let (model, solution, word) =
+                    build_test_fixtures("cat cab abs cap", vec!["cab", "abs"], "cat");
+                assert_eq!(
+                    word_score_new_pairs(&word, &solution.unchosen_pairs(&model)),
+                    1
+                );
+            }
+
+            #[test]
+            fn word_score_new_pairs_empty_solution() {
+                let (model, solution, word) =
+                    build_test_fixtures("cat oven mutch cab abs cap", Vec::new(), "cat");
+                assert_eq!(
+                    word_score_new_pairs(&word, &solution.unchosen_pairs(&model)),
+                    2
+                );
+            }
+
+            #[test]
+            fn word_score_new_pairs_repeated_pairs() {
+                let test_word = "bananananana";
+                let (model, solution, word) = build_test_fixtures(test_word, Vec::new(), test_word);
+                assert_eq!(
+                    word_score_new_pairs(&word, &solution.unchosen_pairs(&model)),
+                    3
+                );
+            }
+
+            #[test]
+            fn empty() {
+                let model = Model::new(io::empty()).expect("reading empty should not fail");
+                assert_eq!(greedy_most_valuable_word(&model), Ok(Solution::default()));
+            }
+
+            #[test]
+            fn one_word() {
+                let (model, expected_solution) = build_test_model_and_solution("cat", vec!["cat"]);
+                let solution = greedy_most_valuable_word(&model);
+                assert_eq!(solution, Ok(expected_solution));
+            }
+
+            #[test]
+            fn multiple() {
+                let (model, expected_solution) = build_test_model_and_solution(
+                    "cat abs hutch oven cab cap much coven",
+                    vec!["coven", "hutch", "abs", "cap", "cat", "much"],
+                );
+                let solution =
+                    greedy_most_valuable_word(&model).expect("test should produce solution");
+                assert_eq!(solution, expected_solution);
+            }
+
+            #[test]
+            fn find_best_word_word_score_new_pairs_lexical_choice() {
+                let (model, solution, word) = build_test_fixtures("cat abs cab", Vec::new(), "abs");
+                let best_word = find_best_word(
+                    &word_score_new_pairs,
+                    &solution.unchosen_words(&model),
+                    &solution.unchosen_pairs(&model),
+                );
+                assert_eq!(best_word, Some(word));
+            }
+
+            #[test]
+            fn find_best_word_word_score_new_pairs_high_score() {
+                let (model, solution, word) =
+                    build_test_fixtures("cat abs cab", vec!["abs"], "cat");
+                let best_word = find_best_word(
+                    &word_score_new_pairs,
+                    &solution.unchosen_words(&model),
+                    &solution.unchosen_pairs(&model),
+                );
+                assert_eq!(best_word, Some(word));
+            }
+
+            #[test]
+            fn find_best_word_word_score_new_pairs_shortest() {
+                let (model, solution, word) =
+                    build_test_fixtures("cat abs cab carbs carb", vec!["cat", "abs"], "carb");
+                let best_word = find_best_word(
+                    &word_score_new_pairs,
+                    &solution.unchosen_words(&model),
+                    &solution.unchosen_pairs(&model),
+                );
+                assert_eq!(best_word, Some(word));
+            }
         }
     }
 }

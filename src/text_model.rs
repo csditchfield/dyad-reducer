@@ -287,6 +287,11 @@ impl Model {
         self.pair_mapping.get(pair)
     }
 
+    /// Find a word in the model whose `to_string()` representation matches a `&str`.
+    pub fn find_word_str(&self, word: &str) -> Option<Rc<Word>> {
+        self.words.iter().find(|&x| x.to_string() == word).cloned()
+    }
+
     /// Finds all the `CharacterPairs` that appear in exactly one `Word` in the model, and return a `HashSet` of those `Words`.
     pub fn find_words_with_unique_pairs(&self) -> Result<HashSet<Rc<Word>>, ModelError> {
         let mut chosen_words = HashSet::new();
@@ -752,6 +757,27 @@ mod tests {
                 .expect("should not error");
             let expected = create_test_solution(&model, vec!["cab", "hat"]);
             assert_eq!(words, *expected.words());
+        }
+
+        #[test]
+        fn find_word_str_empty() {
+            let model = Model::new(io::empty()).expect("reading empty should not fail");
+            assert_eq!(model.find_word_str("cat"), None);
+        }
+
+        #[test]
+        fn find_word_str_contained() {
+            let model = Model::build_test_model("cat abs cab");
+            assert_eq!(
+                model.find_word_str("cat"),
+                Some(Word::build_test_word("cat"))
+            );
+        }
+
+        #[test]
+        fn find_word_str_missing() {
+            let model = Model::build_test_model("cat abs cab");
+            assert_eq!(model.find_word_str("hutch"), None);
         }
     }
 }

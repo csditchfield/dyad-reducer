@@ -61,6 +61,16 @@ impl Solution {
         pairs
     }
 
+    /// Returns a `Vec` of `Rc<CharacterPair>>` that are in model, but not self.
+    pub fn unchosen_pairs(&self, model: &Model) -> HashSet<Rc<CharacterPair>> {
+        model.pairs().difference(&self.pairs()).cloned().collect()
+    }
+
+    /// Returns a `Vec` of `Rc<CharacterPair>>` that are in model, but not self.
+    pub fn unchosen_words(&self, model: &Model) -> HashSet<Rc<Word>> {
+        model.words().difference(self.words()).cloned().collect()
+    }
+
     /// Returns true if the Solution is complete for a given Model.
     ///
     /// Checks that the solution covers all CharacterPairs contained within the Model.
@@ -110,16 +120,27 @@ pub fn create_test_solution(model: &Model, words: Vec<&str>) -> Solution {
 }
 
 #[cfg(test)]
+pub fn build_test_model_and_solution(
+    model_text: &str,
+    chosen_words: Vec<&str>,
+) -> (Model, Solution) {
+    let model = Model::build_test_model(model_text);
+    let solution = create_test_solution(&model, chosen_words);
+    (model, solution)
+}
+
+#[cfg(test)]
 mod tests {
     use super::*;
     use crate::text_model::Model;
+    use std::io;
 
     #[test]
     fn new() {
-        let model = Model::build_test_model("cat abs cab");
-        let words = model.words();
-        let solution = Solution::new(words.clone());
-        assert_eq!(solution.words(), words);
+        let text = "cat abs cab";
+        let (model, solution) =
+            build_test_model_and_solution(text, text.split_whitespace().collect());
+        assert_eq!(solution.words(), model.words());
     }
 
     #[test]
@@ -130,17 +151,13 @@ mod tests {
 
     #[test]
     fn display_one_word() {
-        let model = Model::build_test_model("cat abs cab");
-        let solution = create_test_solution(&model, vec!["cab"]);
-
+        let (_model, solution) = build_test_model_and_solution("cat abs cab", vec!["cab"]);
         assert_eq!(solution.to_string(), "cab");
     }
 
     #[test]
     fn display_words() {
-        let model = Model::build_test_model("cat abs cab");
-        let solution = create_test_solution(&model, vec!["cat", "abs"]);
-
+        let (_model, solution) = build_test_model_and_solution("cat abs cab", vec!["cat", "abs"]);
         let repr = solution.to_string();
         assert!(
             repr == "cat abs" || repr == "abs cat",
@@ -237,8 +254,10 @@ mod tests {
 
     #[test]
     fn pairs_multiple_words() {
-        let model = Model::build_test_model("cat abs hutch oven cab cap much coven");
-        let solution = create_test_solution(&model, vec!["cat", "abs", "oven", "much"]);
+        let (_model, solution) = build_test_model_and_solution(
+            "cat abs hutch oven cab cap much coven",
+            vec!["cat", "abs", "oven", "much"],
+        );
         let expected: HashSet<Rc<CharacterPair>> = vec![
             CharacterPair::new('c', 'a'),
             CharacterPair::new('a', 't'),
@@ -260,8 +279,10 @@ mod tests {
 
     #[test]
     fn pairs_duplicates() {
-        let model = Model::build_test_model("cat abs hutch oven cab cap much coven");
-        let solution = create_test_solution(&model, vec!["cat", "cab"]);
+        let (_model, solution) = build_test_model_and_solution(
+            "cat abs hutch oven cab cap much coven",
+            vec!["cat", "cab"],
+        );
         let expected: HashSet<Rc<CharacterPair>> = vec![
             CharacterPair::new('c', 'a'),
             CharacterPair::new('a', 't'),
@@ -299,31 +320,28 @@ mod tests {
 
     #[test]
     fn is_valid_true() {
-        let model = Model::build_test_model("cat abs cab");
-        let solution = create_test_solution(&model, vec!["cat", "abs"]);
+        let (model, solution) = build_test_model_and_solution("cat abs cab", vec!["cat", "abs"]);
         assert!(solution.is_valid(&model));
     }
 
     #[test]
     fn is_valid_false() {
-        let model = Model::build_test_model("cat abs cab");
-        let solution = create_test_solution(&model, vec!["cab", "abs"]);
+        let (model, solution) = build_test_model_and_solution("cat abs cab", vec!["cab", "abs"]);
         assert!(!solution.is_valid(&model));
     }
 
     #[test]
     fn is_valid_overcomplete() {
-        let model = Model::build_test_model("cat abs cab");
-        let solution = create_test_solution(&model, vec!["cat", "abs", "cab"]);
+        let (model, solution) =
+            build_test_model_and_solution("cat abs cab", vec!["cat", "abs", "cab"]);
         assert!(solution.is_valid(&model));
     }
 
     #[test]
     fn is_valid_extra() {
-        let model = Model::build_test_model("cat abs cab");
-        let mut solution = create_test_solution(&model, vec!["cat", "abs", "cab"]);
-        let word = Word::build_test_word("oven");
-        solution.add_word(word);
+        let (model, mut solution) =
+            build_test_model_and_solution("cat abs cab", vec!["cat", "abs", "cab"]);
+        solution.add_word(Word::build_test_word("oven"));
         assert!(!solution.is_valid(&model));
     }
 
@@ -352,31 +370,28 @@ mod tests {
 
     #[test]
     fn is_complete_true() {
-        let model = Model::build_test_model("cat abs cab");
-        let solution = create_test_solution(&model, vec!["cat", "abs"]);
+        let (model, solution) = build_test_model_and_solution("cat abs cab", vec!["cat", "abs"]);
         assert!(solution.is_complete(&model));
     }
 
     #[test]
     fn is_complete_false() {
-        let model = Model::build_test_model("cat abs cab");
-        let solution = create_test_solution(&model, vec!["cab", "abs"]);
+        let (model, solution) = build_test_model_and_solution("cat abs cab", vec!["cab", "abs"]);
         assert!(!solution.is_complete(&model));
     }
 
     #[test]
     fn is_complete_overcomplete() {
-        let model = Model::build_test_model("cat abs cab");
-        let solution = create_test_solution(&model, vec!["cat", "abs", "cab"]);
+        let (model, solution) =
+            build_test_model_and_solution("cat abs cab", vec!["cat", "abs", "cab"]);
         assert!(solution.is_complete(&model));
     }
 
     #[test]
     fn is_complete_extra() {
-        let model = Model::build_test_model("cat abs cab");
-        let mut solution = create_test_solution(&model, vec!["cat", "abs", "cab"]);
-        let word = Word::build_test_word("oven");
-        solution.add_word(word);
+        let (model, mut solution) =
+            build_test_model_and_solution("cat abs cab", vec!["cat", "abs", "cab"]);
+        solution.add_word(Word::build_test_word("oven"));
         assert!(solution.is_complete(&model));
     }
 
@@ -388,22 +403,21 @@ mod tests {
 
     #[test]
     fn len_one_word() {
-        let model = Model::build_test_model("cat");
-        let solution = create_test_solution(&model, vec!["cat"]);
+        let (_model, solution) = build_test_model_and_solution("cat", vec!["cat"]);
         assert_eq!(solution.len(), 3);
     }
 
     #[test]
     fn len_words() {
-        let model = Model::build_test_model("cat abs hutch");
-        let solution = create_test_solution(&model, vec!["cat", "abs", "hutch"]);
+        let (_model, solution) =
+            build_test_model_and_solution("cat abs hutch", vec!["cat", "abs", "hutch"]);
         assert_eq!(solution.len(), 13);
     }
 
     #[test]
     fn len_words_to_string() {
-        let model = Model::build_test_model("cat abs hutch");
-        let solution = create_test_solution(&model, vec!["cat", "abs", "hutch"]);
+        let (_model, solution) =
+            build_test_model_and_solution("cat abs hutch", vec!["cat", "abs", "hutch"]);
         assert_eq!(solution.len(), solution.to_string().len());
     }
 
@@ -416,8 +430,114 @@ mod tests {
     #[test]
     fn is_empty_false() {
         let mut solution = Solution::default();
-        let word = Word::build_test_word("cat");
-        solution.add_word(word);
+        solution.add_word(Word::build_test_word("cat"));
         assert!(!solution.is_empty());
+    }
+
+    #[test]
+    fn unchosen_pairs_both_empty() {
+        let model = Model::new(io::empty()).expect("reading empty should not fail");
+        let solution = Solution::default();
+        assert_eq!(solution.unchosen_pairs(&model), HashSet::new());
+    }
+
+    #[test]
+    fn unchosen_pairs_empty_model() {
+        let test_model = Model::new(io::empty()).expect("reading empty should not fail");
+        let (_, solution) = build_test_model_and_solution("cat", vec!["cat"]);
+        assert_eq!(solution.unchosen_pairs(&test_model), HashSet::new());
+    }
+
+    #[test]
+    fn unchosen_pairs_empty_solution() {
+        let (model, solution) = build_test_model_and_solution("cat abs cab", Vec::new());
+        assert_eq!(solution.unchosen_pairs(&model), model.pairs().clone());
+    }
+
+    #[test]
+    fn unchosen_pairs_match() {
+        let (model, solution) = build_test_model_and_solution("cat abs cab", vec!["cat", "abs"]);
+        assert_eq!(solution.unchosen_pairs(&model), HashSet::new());
+    }
+
+    #[test]
+    fn unchosen_pairs_extra_model() {
+        let (model, solution) = build_test_model_and_solution("cat abs cab", vec!["abs", "cab"]);
+        assert_eq!(
+            solution.unchosen_pairs(&model),
+            HashSet::from([Rc::new(CharacterPair::new('a', 't'))])
+        );
+    }
+
+    #[test]
+    fn unchosen_pairs_extra_solution() {
+        let (model, mut solution) = build_test_model_and_solution("cat abs", vec!["cat", "abs"]);
+        solution.add_word(Word::build_test_word("red"));
+        assert_eq!(solution.unchosen_pairs(&model), HashSet::new());
+    }
+
+    #[test]
+    fn unchosen_pairs_extra_both() {
+        let (model, mut solution) =
+            build_test_model_and_solution("cat abs cab", vec!["cab", "abs"]);
+        solution.add_word(Word::build_test_word("red"));
+        assert_eq!(
+            solution.unchosen_pairs(&model),
+            HashSet::from([Rc::new(CharacterPair::new('a', 't'))])
+        );
+    }
+
+    #[test]
+    fn unchosen_words_both_empty() {
+        let model = Model::new(io::empty()).expect("reading empty should not fail");
+        let solution = Solution::default();
+        assert_eq!(solution.unchosen_words(&model), HashSet::new());
+    }
+
+    #[test]
+    fn unchosen_words_empty_model() {
+        let test_model = Model::new(io::empty()).expect("reading empty should not fail");
+        let (_, solution) = build_test_model_and_solution("cat", vec!["cat"]);
+        assert_eq!(solution.unchosen_words(&test_model), HashSet::new());
+    }
+
+    #[test]
+    fn unchosen_words_empty_solution() {
+        let (model, solution) = build_test_model_and_solution("cat abs cab", Vec::new());
+        assert_eq!(solution.unchosen_words(&model), model.words().clone());
+    }
+
+    #[test]
+    fn unchosen_words_match() {
+        let (model, solution) =
+            build_test_model_and_solution("cat abs cab", vec!["cat", "abs", "cab"]);
+        assert_eq!(solution.unchosen_words(&model), HashSet::new());
+    }
+
+    #[test]
+    fn unchosen_words_extra_model() {
+        let (model, solution) = build_test_model_and_solution("cat abs cab", vec!["abs", "cab"]);
+        assert_eq!(
+            solution.unchosen_words(&model),
+            HashSet::from([model.find_word_str("cat").expect("should contain \"cat\"")])
+        );
+    }
+
+    #[test]
+    fn unchosen_words_extra_solution() {
+        let (model, mut solution) = build_test_model_and_solution("cat abs", vec!["cat", "abs"]);
+        solution.add_word(Word::build_test_word("red"));
+        assert_eq!(solution.unchosen_words(&model), HashSet::new());
+    }
+
+    #[test]
+    fn unchosen_words_extra_both() {
+        let (model, mut solution) =
+            build_test_model_and_solution("cat abs cab", vec!["cab", "abs"]);
+        solution.add_word(Word::build_test_word("red"));
+        assert_eq!(
+            solution.unchosen_words(&model),
+            HashSet::from([model.find_word_str("cat").expect("should contain \"cat\"")])
+        );
     }
 }
