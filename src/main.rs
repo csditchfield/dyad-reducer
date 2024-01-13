@@ -147,8 +147,11 @@ mod tests {
     #[test]
     fn letter_pair_error_from() {
         let message = String::from("cats are great.");
-        let error =
-            solvers::SolverError::new(message.clone(), solvers::ErrorKind::ConsistencyError, None);
+        let error = solvers::SolverError::new(
+            message.clone(),
+            solvers::ErrorKind::ModelConsistencyError,
+            None,
+        );
         assert_eq!(message, format!("{:?}", LetterPairsError::from(error)));
     }
 

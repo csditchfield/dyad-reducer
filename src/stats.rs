@@ -665,7 +665,7 @@ mod tests {
                 Timing {
                     result: Err(SolverError::new(
                         String::from("test"),
-                        SolverErrorKind::ConsistencyError,
+                        SolverErrorKind::ModelConsistencyError,
                         None,
                     )),
                     duration,
@@ -692,7 +692,7 @@ mod tests {
             let t2 = Timing {
                 result: Err(SolverError::new(
                     String::from("test"),
-                    SolverErrorKind::ConsistencyError,
+                    SolverErrorKind::ModelConsistencyError,
                     None,
                 )),
                 duration,
@@ -1238,7 +1238,7 @@ mod tests {
         fn error_solver(_model: &Model) -> Result<Solution, SolverError> {
             Err(SolverError::new(
                 String::from("test"),
-                SolverErrorKind::ConsistencyError,
+                SolverErrorKind::ModelConsistencyError,
                 None,
             ))
         }
@@ -1262,7 +1262,7 @@ mod tests {
 
             let s3 = SolverError::new(
                 String::from("test"),
-                SolverErrorKind::ConsistencyError,
+                SolverErrorKind::ModelConsistencyError,
                 None,
             );
             let t3_duration = Duration::new(10000, 0);
@@ -1339,7 +1339,7 @@ mod tests {
         fn calculate_stats_all_errors() {
             let s1 = SolverError::new(
                 String::from("test"),
-                SolverErrorKind::ConsistencyError,
+                SolverErrorKind::ModelConsistencyError,
                 None,
             );
             let mut duration = Duration::new(20000, 0);
@@ -1350,7 +1350,7 @@ mod tests {
 
             let s2 = SolverError::new(
                 String::from("test"),
-                SolverErrorKind::ConsistencyError,
+                SolverErrorKind::ModelConsistencyError,
                 None,
             );
             duration = Duration::new(10000, 0);
@@ -1499,7 +1499,7 @@ mod tests {
             let start = Instant::now();
             let error = SolverError::new(
                 String::from("test"),
-                SolverErrorKind::ConsistencyError,
+                SolverErrorKind::ModelConsistencyError,
                 None,
             );
             let duration = start.elapsed();
@@ -1543,7 +1543,7 @@ mod tests {
             let start = Instant::now();
             let error = SolverError::new(
                 String::from("test"),
-                SolverErrorKind::ConsistencyError,
+                SolverErrorKind::ModelConsistencyError,
                 None,
             );
 

@@ -20,6 +20,53 @@ pub type ModelError = GenericError<ErrorKind>;
 pub enum ErrorKind {
     /// Could not read from file.
     FileReadingError,
+    /// The model has become internally inconsistent.
+    ConsistencyError,
+}
+
+/// A Pair of Characters.
+#[derive(Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
+pub struct CharacterPair {
+    first: char,
+    second: char,
+}
+
+impl fmt::Display for CharacterPair {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        write!(f, "{}{}", self.first, self.second)
+    }
+}
+
+impl From<(char, char)> for CharacterPair {
+    fn from(value: (char, char)) -> Self {
+        Self {
+            first: value.0,
+            second: value.1,
+        }
+    }
+}
+
+impl CharacterPair {
+    /// Creates a new `CharacterPair`.
+    pub fn new(first: char, second: char) -> Self {
+        CharacterPair { first, second }
+    }
+
+    /// Returns a reference to the first character in the pair.
+    pub fn first(&self) -> &char {
+        &self.first
+    }
+
+    /// Returns a reference to the second character in the pair.
+    pub fn second(&self) -> &char {
+        &self.second
+    }
+}
+
+impl From<CharacterPair> for (char, char) {
+    fn from(value: CharacterPair) -> Self {
+        (value.first, value.second)
+    }
 }
 
 /// A Word.
@@ -38,12 +85,12 @@ pub struct Word {
 impl Display for Word {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         let mut repr = self.pairs.iter().fold(String::new(), |mut acc, x| {
-            acc.push(x.0);
+            acc.push(*x.first());
             acc
         });
 
         if let Some(x) = self.pairs.last() {
-            repr.push(x.1)
+            repr.push(*x.second())
         };
 
         write!(f, "{repr}")
@@ -87,7 +134,7 @@ impl Word {
         for c in value.chars() {
             match prev {
                 Some(p) => {
-                    let pair = Rc::new((p, c));
+                    let pair = Rc::new(CharacterPair::new(p, c));
                     match seen.get(&pair) {
                         Some(p) => {
                             pairs.push(p.clone());
@@ -107,9 +154,6 @@ impl Word {
         })
     }
 }
-
-/// A Pair of Characters.
-pub type CharacterPair = (char, char);
 
 /// A Model of a source text in terms of character pairs.
 ///
@@ -188,7 +232,7 @@ impl Model {
                     let mut prev_char = None;
                     for c in str_word.chars() {
                         if let Some(p) = prev_char {
-                            let new_pair = Rc::new((p, c));
+                            let new_pair = Rc::new(CharacterPair::new(p, c));
                             let pair = match pairs.get(&new_pair) {
                                 Some(p) => p.clone(),
                                 None => {
@@ -243,6 +287,32 @@ impl Model {
         self.pair_mapping.get(pair)
     }
 
+    /// Finds all the `CharacterPairs` that appear in exactly one `Word` in the model, and return a `HashSet` of those `Words`.
+    pub fn find_words_with_unique_pairs(&self) -> Result<HashSet<Rc<Word>>, ModelError> {
+        let mut chosen_words = HashSet::new();
+        for pair in self.pairs() {
+            if let Some(words) = self.get_pair_words(pair) {
+                if 1 == words.len() {
+                    let word = words
+                        .iter()
+                        .next()
+                        .expect("There should be one item in a HashSet of length 1");
+                    chosen_words.insert(word.clone());
+                }
+            } else {
+                return Err(ModelError::new(
+                    format!(
+                        "character pair \"{}\" is in the model, but not contained by any words",
+                        pair
+                    ),
+                    ErrorKind::ConsistencyError,
+                    None,
+                ));
+            };
+        }
+        Ok(chosen_words)
+    }
+
     #[cfg(test)]
     /// Constructs a `Model` from a string slice.
     ///
@@ -257,8 +327,67 @@ impl Model {
 mod tests {
     use super::*;
 
+    mod character_pair {
+        use super::*;
+
+        const FIRST: char = '1';
+        const SECOND: char = '2';
+
+        fn create_test_pair() -> CharacterPair {
+            CharacterPair::new(FIRST, SECOND)
+        }
+
+        fn create_test_tuple() -> (char, char) {
+            (FIRST, SECOND)
+        }
+
+        #[test]
+        fn display() {
+            let pair = create_test_pair();
+            assert_eq!(pair.to_string(), format!("{}{}", FIRST, SECOND));
+        }
+
+        #[test]
+        fn get_first() {
+            let pair = create_test_pair();
+            assert_eq!(*pair.first(), FIRST);
+        }
+
+        #[test]
+        fn get_second() {
+            let pair = create_test_pair();
+            assert_eq!(*pair.second(), SECOND);
+        }
+
+        #[test]
+        fn from_tuple() {
+            let pair = CharacterPair::from(create_test_tuple());
+            let expected = create_test_pair();
+            assert_eq!(pair, expected);
+        }
+
+        #[test]
+        fn tuple_from_character_pair() {
+            let tuple = <(char, char)>::from(create_test_pair());
+            let expected = create_test_tuple();
+            assert_eq!(tuple, expected);
+        }
+    }
+
     mod word_tests {
         use super::*;
+
+        fn create_test_pairs() -> Vec<Rc<CharacterPair>> {
+            vec![
+                Rc::new(CharacterPair::new('A', 'd')),
+                Rc::new(CharacterPair::new('d', 'v')),
+                Rc::new(CharacterPair::new('v', 'a')),
+                Rc::new(CharacterPair::new('a', 'n')),
+                Rc::new(CharacterPair::new('n', 'c')),
+                Rc::new(CharacterPair::new('c', 'e')),
+                Rc::new(CharacterPair::new('e', 'd')),
+            ]
+        }
 
         #[test]
         fn display_empty() {
@@ -269,22 +398,14 @@ mod tests {
         #[test]
         fn display_one() {
             let word = Word {
-                pairs: vec![Rc::new(('a', 'b'))],
+                pairs: vec![Rc::new(CharacterPair::new('a', 'b'))],
             };
             assert_eq!(word.to_string(), "ab");
         }
 
         #[test]
         fn display_long() {
-            let pairs = vec![
-                Rc::new(('A', 'd')),
-                Rc::new(('d', 'v')),
-                Rc::new(('v', 'a')),
-                Rc::new(('a', 'n')),
-                Rc::new(('n', 'c')),
-                Rc::new(('c', 'e')),
-                Rc::new(('e', 'd')),
-            ];
+            let pairs = create_test_pairs();
             let word = Word { pairs };
 
             assert_eq!(word.to_string(), "Advanced");
@@ -300,7 +421,7 @@ mod tests {
 
         #[test]
         fn pairs_one() {
-            let pairs = vec![Rc::new(('a', 'b'))];
+            let pairs = vec![Rc::new(CharacterPair::new('a', 'b'))];
             let word = Word {
                 pairs: pairs.clone(),
             };
@@ -309,15 +430,7 @@ mod tests {
 
         #[test]
         fn pairs_long() {
-            let pairs = vec![
-                Rc::new(('A', 'd')),
-                Rc::new(('d', 'v')),
-                Rc::new(('v', 'a')),
-                Rc::new(('a', 'n')),
-                Rc::new(('n', 'c')),
-                Rc::new(('c', 'e')),
-                Rc::new(('e', 'd')),
-            ];
+            let pairs = create_test_pairs();
             let word = Word {
                 pairs: pairs.clone(),
             };
@@ -327,10 +440,10 @@ mod tests {
 
         #[test]
         fn display_duplicates() {
-            let an = Rc::new(('a', 'n'));
-            let na = Rc::new(('n', 'a'));
+            let an = Rc::new(CharacterPair::new('a', 'n'));
+            let na = Rc::new(CharacterPair::new('n', 'a'));
             let pairs = vec![
-                Rc::new(('b', 'a')),
+                Rc::new(CharacterPair::new('b', 'a')),
                 an.clone(),
                 na.clone(),
                 an.clone(),
@@ -350,9 +463,9 @@ mod tests {
         #[test]
         fn build_test_word() {
             let word = Word::build_test_word("banana");
-            let ba = Rc::new(('b', 'a'));
-            let an = Rc::new(('a', 'n'));
-            let na = Rc::new(('n', 'a'));
+            let ba = Rc::new(CharacterPair::new('b', 'a'));
+            let an = Rc::new(CharacterPair::new('a', 'n'));
+            let na = Rc::new(CharacterPair::new('n', 'a'));
             let expected_pairs = vec![ba, an.clone(), na.clone(), an, na];
             assert_eq!(*word.pairs(), expected_pairs);
         }
@@ -378,7 +491,7 @@ mod tests {
 
     mod model_tests {
         use super::*;
-        use crate::test_reader::TestReader;
+        use crate::{solution::create_test_solution, test_reader::TestReader};
         use std::{
             error::Error,
             io::{self, BufReader},
@@ -460,7 +573,8 @@ mod tests {
             let text = "an\n";
             let expected_words: HashSet<String> =
                 text.split_whitespace().map(|x| String::from(x)).collect();
-            let expected_pairs: HashSet<CharacterPair> = vec![('a', 'n')].into_iter().collect();
+            let expected_pairs: HashSet<CharacterPair> =
+                vec![CharacterPair::new('a', 'n')].into_iter().collect();
             let model = Model::build_test_model(text);
             verify_words(model.words(), &expected_words);
             verify_pairs(model.pairs(), &expected_pairs);
@@ -472,9 +586,13 @@ mod tests {
             let text = "banana";
             let expected_words: HashSet<String> =
                 text.split_whitespace().map(|x| String::from(x)).collect();
-            let expected_pairs: HashSet<CharacterPair> = vec![('b', 'a'), ('a', 'n'), ('n', 'a')]
-                .into_iter()
-                .collect();
+            let expected_pairs: HashSet<CharacterPair> = vec![
+                CharacterPair::new('b', 'a'),
+                CharacterPair::new('a', 'n'),
+                CharacterPair::new('n', 'a'),
+            ]
+            .into_iter()
+            .collect();
             let model = Model::build_test_model(text);
             verify_words(model.words(), &expected_words);
             verify_pairs(model.pairs(), &expected_pairs);
@@ -488,10 +606,14 @@ mod tests {
                 .into_iter()
                 .map(|x| String::from(x))
                 .collect();
-            let expected_pairs: HashSet<CharacterPair> =
-                vec![('c', 'a'), ('a', 't'), ('a', 'b'), ('b', 's')]
-                    .into_iter()
-                    .collect();
+            let expected_pairs: HashSet<CharacterPair> = vec![
+                CharacterPair::new('c', 'a'),
+                CharacterPair::new('a', 't'),
+                CharacterPair::new('a', 'b'),
+                CharacterPair::new('b', 's'),
+            ]
+            .into_iter()
+            .collect();
             let model = Model::build_test_model(text);
             verify_words(model.words(), &expected_words);
             verify_pairs(model.pairs(), &expected_pairs);
@@ -505,10 +627,15 @@ mod tests {
                 .into_iter()
                 .map(|x| String::from(x))
                 .collect();
-            let expected_pairs: HashSet<CharacterPair> =
-                vec![('c', 'a'), ('a', 't'), ('a', 'b'), ('b', 's'), ('a', 'p')]
-                    .into_iter()
-                    .collect();
+            let expected_pairs: HashSet<CharacterPair> = vec![
+                CharacterPair::new('c', 'a'),
+                CharacterPair::new('a', 't'),
+                CharacterPair::new('a', 'b'),
+                CharacterPair::new('b', 's'),
+                CharacterPair::new('a', 'p'),
+            ]
+            .into_iter()
+            .collect();
             let model = Model::build_test_model(text);
             verify_words(model.words(), &expected_words);
             verify_pairs(model.pairs(), &expected_pairs);
@@ -522,10 +649,15 @@ mod tests {
                 .into_iter()
                 .map(|x| String::from(x))
                 .collect();
-            let expected_pairs: HashSet<CharacterPair> =
-                vec![('c', 'a'), ('a', 't'), ('a', 'b'), ('b', 's'), ('a', 'p')]
-                    .into_iter()
-                    .collect();
+            let expected_pairs: HashSet<CharacterPair> = vec![
+                CharacterPair::new('c', 'a'),
+                CharacterPair::new('a', 't'),
+                CharacterPair::new('a', 'b'),
+                CharacterPair::new('b', 's'),
+                CharacterPair::new('a', 'p'),
+            ]
+            .into_iter()
+            .collect();
             match Model::try_from(text) {
                 Ok(model) => {
                     verify_words(model.words(), &expected_words);
@@ -545,10 +677,15 @@ mod tests {
                 .into_iter()
                 .map(|x| String::from(x))
                 .collect();
-            let expected_pairs: HashSet<CharacterPair> =
-                vec![('c', 'a'), ('a', 't'), ('a', 'b'), ('b', 's'), ('a', 'p')]
-                    .into_iter()
-                    .collect();
+            let expected_pairs: HashSet<CharacterPair> = vec![
+                CharacterPair::new('c', 'a'),
+                CharacterPair::new('a', 't'),
+                CharacterPair::new('a', 'b'),
+                CharacterPair::new('b', 's'),
+                CharacterPair::new('a', 'p'),
+            ]
+            .into_iter()
+            .collect();
             match Model::try_from(text.as_bytes()) {
                 Ok(model) => {
                     verify_words(model.words(), &expected_words);
@@ -568,14 +705,53 @@ mod tests {
                 .into_iter()
                 .map(|x| String::from(x))
                 .collect();
-            let expected_pairs: HashSet<CharacterPair> =
-                vec![('c', 'a'), ('a', 't'), ('a', 'b'), ('b', 's'), ('a', 'p')]
-                    .into_iter()
-                    .collect();
+            let expected_pairs: HashSet<CharacterPair> = vec![
+                CharacterPair::new('c', 'a'),
+                CharacterPair::new('a', 't'),
+                CharacterPair::new('a', 'b'),
+                CharacterPair::new('b', 's'),
+                CharacterPair::new('a', 'p'),
+            ]
+            .into_iter()
+            .collect();
             let model = Model::build_test_model(text);
             verify_words(model.words(), &expected_words);
             verify_pairs(model.pairs(), &expected_pairs);
             verify_pair_mapping(model);
+        }
+
+        #[test]
+        fn find_words_with_unique_pairs_empty() {
+            let model = Model::new(io::empty()).expect("reading empty should not fail");
+            let words = model.find_words_with_unique_pairs();
+            assert_eq!(words, Ok(HashSet::new()));
+        }
+
+        #[test]
+        fn find_words_with_unique_pairs_no_unique_pairs() {
+            let model = Model::build_test_model("cat can mat man");
+            let words = model.find_words_with_unique_pairs();
+            assert_eq!(words, Ok(HashSet::new()));
+        }
+
+        #[test]
+        fn find_words_with_unique_pairs_one_word() {
+            let model = Model::build_test_model("cat");
+            let words = model
+                .find_words_with_unique_pairs()
+                .expect("should not error");
+            let expected = create_test_solution(&model, vec!["cat"]);
+            assert_eq!(words, *expected.words())
+        }
+
+        #[test]
+        fn find_words_with_unique_pairs_many_words() {
+            let model = Model::build_test_model("cat can cab mat man hat");
+            let words = model
+                .find_words_with_unique_pairs()
+                .expect("should not error");
+            let expected = create_test_solution(&model, vec!["cab", "hat"]);
+            assert_eq!(words, *expected.words());
         }
     }
 }
