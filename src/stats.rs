@@ -1,6 +1,9 @@
 //! Utilities for calculating statistics about Solution generation.
 use crate::{
-    consts::BILLION_SQUARED, error::GenericError, solution::Solution, solvers::SolverError,
+    consts::BILLION_SQUARED,
+    error::GenericError,
+    solution::Solution,
+    solvers::{Solver, SolverError},
     text_model::Model,
 };
 use std::{
@@ -327,11 +330,10 @@ pub struct Sample {
 
 impl Sample {
     /// Create a new Sample using a solver function on a Model 0 or more times.
-    pub fn new(
-        solver: &dyn Fn(&Model) -> Result<Solution, SolverError>,
-        model: &Model,
-        n: usize,
-    ) -> Self {
+    pub fn new<S>(solver: S, model: &Model, n: usize) -> Self
+    where
+        S: Solver,
+    {
         let mut timings = Vec::new();
         for _ in 0..n {
             let start = Instant::now();
@@ -342,24 +344,28 @@ impl Sample {
         Self { timings }
     }
 
-    fn calculate_mean_usize(nums: &Vec<usize>) -> Option<Result<f64, StatsError>> {
+    fn calculate_mean_usize(nums: &[usize]) -> Option<Result<f64, StatsError>> {
         if !nums.is_empty() {
             Some(
                 nums.iter()
                     .try_fold(usize::MIN, |acc, &x| acc.checked_add(x))
                     .map(|m| m as f64 / nums.len() as f64)
-                    .ok_or(StatsError::new(
-                        String::from("summing of usizes overflowed while calculating mean value"),
-                        ErrorKind::OverflowError(OverflowLocation::MeanSummation),
-                        None,
-                    )),
+                    .ok_or_else(|| {
+                        StatsError::new(
+                            String::from(
+                                "summing of usizes overflowed while calculating mean value",
+                            ),
+                            ErrorKind::OverflowError(OverflowLocation::MeanSummation),
+                            None,
+                        )
+                    }),
             )
         } else {
             None
         }
     }
 
-    fn calculate_median_usize(nums: &mut Vec<usize>) -> Option<f64> {
+    fn calculate_median_usize(nums: &mut [usize]) -> Option<f64> {
         nums.sort_unstable();
 
         if !nums.is_empty() {
@@ -379,7 +385,7 @@ impl Sample {
         }
     }
 
-    fn calculate_uncorrected_variance_usize(nums: &Vec<usize>, mean: f64) -> Option<f64> {
+    fn calculate_uncorrected_variance_usize(nums: &[usize], mean: f64) -> Option<f64> {
         if !nums.is_empty() {
             Some(nums.iter().map(|&x| (x as f64 - mean).powi(2)).sum::<f64>() / nums.len() as f64)
         } else {
@@ -387,7 +393,7 @@ impl Sample {
         }
     }
 
-    fn calculate_mean_duration(durations: &Vec<Duration>) -> Option<Result<Duration, StatsError>> {
+    fn calculate_mean_duration(durations: &[Duration]) -> Option<Result<Duration, StatsError>> {
         if !durations.is_empty() {
             Some(
                 durations
@@ -407,7 +413,7 @@ impl Sample {
         }
     }
 
-    fn calculate_median_duration(durations: &mut Vec<Duration>) -> Option<Duration> {
+    fn calculate_median_duration(durations: &mut [Duration]) -> Option<Duration> {
         durations.sort_unstable();
 
         if !durations.is_empty() {
@@ -427,9 +433,9 @@ impl Sample {
         }
     }
 
-    /// Calculates the uncorrected variance of a vector of Durations.
+    /// Calculates the uncorrected variance of a slice of Durations.
     fn calculate_uncorrected_variance_duration(
-        durations: &Vec<Duration>,
+        durations: &[Duration],
         mean: &Duration,
     ) -> Option<Result<u128, StatsError>> {
         if !durations.is_empty() {
@@ -1384,7 +1390,7 @@ mod tests {
             let runs = 30;
             let input = BufReader::new(std::io::empty());
             let model = Model::new(input).expect("Model creation should not fail");
-            let sample = Sample::new(&solvers::whole_text, &model, runs);
+            let sample = Sample::new(solvers::whole_text, &model, runs);
             let stats = sample.calculate_stats();
             assert_eq!(stats.runs(), runs);
             assert_eq!(stats.successes(), runs);
@@ -1396,7 +1402,7 @@ mod tests {
         fn one_run() {
             let runs = 1;
             let model = Model::build_test_model("cat abs cab");
-            let sample = Sample::new(&solvers::whole_text, &model, runs);
+            let sample = Sample::new(solvers::whole_text, &model, runs);
             let stats = sample.calculate_stats();
             assert_eq!(stats.runs(), runs);
             assert_eq!(stats.successes(), runs);
@@ -1410,7 +1416,7 @@ mod tests {
             let runs = 1;
             let m1 = Model::build_test_model("cat cabs");
             let m2 = Model::build_test_model("cat abs cabs");
-            let sample = Sample::new(&solvers::whole_text, &m1, runs);
+            let sample = Sample::new(solvers::whole_text, &m1, runs);
             let stats = sample.calculate_stats();
             assert_eq!(stats.runs(), runs);
             assert_eq!(stats.successes(), runs);
@@ -1423,7 +1429,7 @@ mod tests {
         fn multiple_runs() {
             let runs = 30;
             let model = Model::build_test_model("cat abs cab");
-            let sample = Sample::new(&solvers::whole_text, &model, runs);
+            let sample = Sample::new(solvers::whole_text, &model, runs);
             let stats = sample.calculate_stats();
             assert_eq!(stats.runs(), runs);
             assert_eq!(stats.successes(), runs);
@@ -1436,7 +1442,7 @@ mod tests {
         fn error() {
             let runs = 1;
             let model = Model::build_test_model("cat abs cab");
-            let sample = Sample::new(&error_solver, &model, runs);
+            let sample = Sample::new(error_solver, &model, runs);
             let stats = sample.calculate_stats();
             assert_eq!(stats.runs(), runs);
             assert_eq!(stats.failures(), runs);
@@ -1446,7 +1452,7 @@ mod tests {
         fn error_multiple() {
             let runs = 30;
             let model = Model::build_test_model("cat abs cab");
-            let sample = Sample::new(&error_solver, &model, runs);
+            let sample = Sample::new(error_solver, &model, runs);
             let stats = sample.calculate_stats();
             assert_eq!(stats.runs(), runs);
             assert_eq!(stats.failures(), runs);
@@ -1455,7 +1461,7 @@ mod tests {
         #[test]
         fn validate_empty() {
             let model = Model::build_test_model("cat abs cab");
-            let sample = Sample::new(&solvers::whole_text, &model, 0);
+            let sample = Sample::new(solvers::whole_text, &model, 0);
             assert_eq!(sample.validate_solutions(&model), 0);
         }
 
@@ -1463,7 +1469,7 @@ mod tests {
         fn validate_one_success() {
             let runs = 1;
             let model = Model::build_test_model("cat abs cab");
-            let sample = Sample::new(&solvers::whole_text, &model, runs);
+            let sample = Sample::new(solvers::whole_text, &model, runs);
             assert_eq!(sample.validate_solutions(&model), 0);
         }
 
@@ -1471,7 +1477,7 @@ mod tests {
         fn validate_one_error() {
             let runs = 1;
             let model = Model::build_test_model("cat abs cab");
-            let sample = Sample::new(&error_solver, &model, runs);
+            let sample = Sample::new(error_solver, &model, runs);
             assert_eq!(sample.validate_solutions(&model), 0);
         }
 
@@ -1479,7 +1485,7 @@ mod tests {
         fn validate_multiple_successes() {
             let runs = 30;
             let model = Model::build_test_model("cat abs cab");
-            let sample = Sample::new(&solvers::whole_text, &model, runs);
+            let sample = Sample::new(solvers::whole_text, &model, runs);
             assert_eq!(sample.validate_solutions(&model), 0);
         }
 
@@ -1487,7 +1493,7 @@ mod tests {
         fn validate_multiple_errors() {
             let runs = 30;
             let model = Model::build_test_model("cat abs cab");
-            let sample = Sample::new(&error_solver, &model, runs);
+            let sample = Sample::new(error_solver, &model, runs);
             assert_eq!(sample.validate_solutions(&model), 0);
         }
 
@@ -1495,7 +1501,7 @@ mod tests {
         fn validate_mix_error() {
             let runs = 30;
             let model = Model::build_test_model("cat abs cab");
-            let mut sample = Sample::new(&solvers::whole_text, &model, runs);
+            let mut sample = Sample::new(solvers::whole_text, &model, runs);
             let start = Instant::now();
             let error = SolverError::new(
                 String::from("test"),
@@ -1516,7 +1522,7 @@ mod tests {
             let runs = 1;
             let m1 = Model::build_test_model("cat");
             let m2 = Model::build_test_model("cat abs cab");
-            let sample = Sample::new(&solvers::whole_text, &m1, runs);
+            let sample = Sample::new(solvers::whole_text, &m1, runs);
             assert_eq!(sample.validate_solutions(&m2), runs);
         }
 
@@ -1525,7 +1531,7 @@ mod tests {
             let runs = 30;
             let m1 = Model::build_test_model("cat");
             let m2 = Model::build_test_model("cat abs cab");
-            let sample = Sample::new(&solvers::whole_text, &m1, runs);
+            let sample = Sample::new(solvers::whole_text, &m1, runs);
             assert_eq!(sample.validate_solutions(&m2), runs);
         }
 
@@ -1534,9 +1540,9 @@ mod tests {
             let runs = 30;
             let m1 = Model::build_test_model("cat");
             let m2 = Model::build_test_model("cat abs cab");
-            let mut sample = Sample::new(&solvers::whole_text, &m2, runs);
+            let mut sample = Sample::new(solvers::whole_text, &m2, runs);
 
-            let mut s2 = Sample::new(&solvers::whole_text, &m1, 1);
+            let mut s2 = Sample::new(solvers::whole_text, &m1, 1);
             sample
                 .timings
                 .push(s2.timings.pop().expect("Sample creation should succeed."));
@@ -1560,7 +1566,7 @@ mod tests {
         #[test]
         fn best_solution_empty() {
             let model = Model::build_test_model("cat abs cab");
-            let sample = Sample::new(&solvers::whole_text, &model, 0);
+            let sample = Sample::new(solvers::whole_text, &model, 0);
             assert!(sample.best_solution().is_none());
         }
 

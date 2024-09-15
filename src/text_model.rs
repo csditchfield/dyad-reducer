@@ -215,16 +215,13 @@ impl Model {
         let mut words_seen: HashSet<String> = HashSet::new();
 
         for outcome in reader.lines() {
-            let line = match outcome {
-                Ok(x) => x,
-                Err(e) => {
-                    return Err(ModelError::new(
-                        String::from("Could not read file."),
-                        ErrorKind::FileReadingError,
-                        Some(Box::new(e)),
-                    ))
-                }
-            };
+            let line = outcome.map_err(|e| {
+                ModelError::new(
+                    String::from("Could not read file."),
+                    ErrorKind::FileReadingError,
+                    Some(Box::new(e)),
+                )
+            })?;
             for str_word in line.split_whitespace() {
                 if str_word.len() >= 2 && !words_seen.contains(str_word) {
                     words_seen.insert(String::from(str_word));
@@ -293,29 +290,24 @@ impl Model {
     }
 
     /// Finds all the `CharacterPairs` that appear in exactly one `Word` in the model, and return a `HashSet` of those `Words`.
-    pub fn find_words_with_unique_pairs(&self) -> Result<HashSet<Rc<Word>>, ModelError> {
+    pub fn find_words_with_unique_pairs(&self) -> Option<HashSet<Rc<Word>>> {
         let mut chosen_words = HashSet::new();
         for pair in self.pairs() {
-            if let Some(words) = self.get_pair_words(pair) {
-                if 1 == words.len() {
-                    let word = words
-                        .iter()
-                        .next()
-                        .expect("There should be one item in a HashSet of length 1");
-                    chosen_words.insert(word.clone());
-                }
-            } else {
-                return Err(ModelError::new(
-                    format!(
-                        "character pair \"{}\" is in the model, but not contained by any words",
-                        pair
-                    ),
-                    ErrorKind::ConsistencyError,
-                    None,
-                ));
-            };
+            let words = self.get_pair_words(pair).expect("A CharacterPair that appears in the model should be mapped to its containing words");
+
+            if 1 == words.len() {
+                let word = words
+                    .iter()
+                    .next()
+                    .expect("There should be one item in a HashSet of length 1");
+                chosen_words.insert(word.clone());
+            }
         }
-        Ok(chosen_words)
+
+        if !chosen_words.is_empty() {
+            return Some(chosen_words);
+        }
+        None
     }
 
     #[cfg(test)]
@@ -729,34 +721,30 @@ mod tests {
         fn find_words_with_unique_pairs_empty() {
             let model = Model::new(io::empty()).expect("reading empty should not fail");
             let words = model.find_words_with_unique_pairs();
-            assert_eq!(words, Ok(HashSet::new()));
+            assert_eq!(words, None);
         }
 
         #[test]
         fn find_words_with_unique_pairs_no_unique_pairs() {
             let model = Model::build_test_model("cat can mat man");
             let words = model.find_words_with_unique_pairs();
-            assert_eq!(words, Ok(HashSet::new()));
+            assert_eq!(words, None);
         }
 
         #[test]
         fn find_words_with_unique_pairs_one_word() {
             let model = Model::build_test_model("cat");
-            let words = model
-                .find_words_with_unique_pairs()
-                .expect("should not error");
+            let words = model.find_words_with_unique_pairs();
             let expected = create_test_solution(&model, vec!["cat"]);
-            assert_eq!(words, *expected.words())
+            assert_eq!(words.as_ref(), Some(expected.words()))
         }
 
         #[test]
         fn find_words_with_unique_pairs_many_words() {
             let model = Model::build_test_model("cat can cab mat man hat");
-            let words = model
-                .find_words_with_unique_pairs()
-                .expect("should not error");
+            let words = model.find_words_with_unique_pairs();
             let expected = create_test_solution(&model, vec!["cab", "hat"]);
-            assert_eq!(words, *expected.words());
+            assert_eq!(words.as_ref(), Some(expected.words()));
         }
 
         #[test]
