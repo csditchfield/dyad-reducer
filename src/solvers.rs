@@ -7,6 +7,10 @@ use crate::{
 };
 use std::{collections::HashSet, rc::Rc};
 
+/// A function that creates a Solution from a Model.
+pub trait Solver: Fn(&Model) -> Result<Solution, SolverError> {}
+impl<T: Fn(&Model) -> Result<Solution, SolverError>> Solver for T {}
+
 /// An error returned by a solver.
 pub type SolverError = GenericError<ErrorKind>;
 
@@ -43,24 +47,22 @@ fn find_best_word(
     unchosen_pairs: &HashSet<Rc<CharacterPair>>,
 ) -> Option<Rc<Word>> {
     let mut words_iter = unchosen_words.iter();
-    if let Some(mut best_word) = words_iter.next() {
-        let mut high_score = judge(best_word, unchosen_pairs);
+    let mut best_word = words_iter.next()?;
+    let mut high_score = judge(best_word, unchosen_pairs);
 
-        for word in words_iter {
-            let score = judge(word, unchosen_pairs);
-            if (score > high_score)
-                || (score == high_score
-                    && (word.len() < best_word.len()
-                        || (word.len() == best_word.len() && word < best_word)))
-            {
-                high_score = score;
-                best_word = word;
-            };
-        }
+    for word in words_iter {
+        let score = judge(word, unchosen_pairs);
+        if (score > high_score)
+            || (score == high_score
+                && (word.len() < best_word.len()
+                    || (word.len() == best_word.len() && word < best_word)))
+        {
+            high_score = score;
+            best_word = word;
+        };
+    }
 
-        return Some(best_word.clone());
-    };
-    None
+    Some(best_word.clone())
 }
 
 /// Creates a `Solution` from a `text_model::Model` by repeatedly choosing
@@ -69,37 +71,19 @@ fn find_best_word(
 /// The value of a word is determined by how many unchosen `CharacterPairs`
 /// it contains.
 pub fn greedy_most_valuable_word(model: &Model) -> Result<Solution, SolverError> {
-    let unique_words = match model.find_words_with_unique_pairs() {
-        Ok(words) => words,
-        Err(err) => {
-            return Err(SolverError::new(
-                String::from("could not compute solution, model is internally inconsistent"),
-                ErrorKind::ModelConsistencyError,
-                Some(Box::new(err)),
-            ))
-        }
-    };
-
+    let unique_words = model.find_words_with_unique_pairs().unwrap_or_default();
     let mut solution = Solution::new(unique_words);
     let mut unchosen_pairs = solution.unchosen_pairs(model);
     let mut unchosen_words = solution.unchosen_words(model);
 
     while !unchosen_pairs.is_empty() {
-        if let Some(best_word) =
-            find_best_word(&word_score_new_pairs, &unchosen_words, &unchosen_pairs)
-        {
-            unchosen_words.remove(&best_word);
-            for pair in best_word.pairs() {
-                unchosen_pairs.remove(pair);
-            }
-            solution.add_word(best_word);
-        } else {
-            return Err(SolverError::new(
-		format!("Model is inconsistant, there are {} pairs remaining to cover, but no more unchosen words.", unchosen_pairs.len()),
-		ErrorKind::ModelConsistencyError,
-		None,
-            ));
+        let best_word = find_best_word(&word_score_new_pairs, &unchosen_words, &unchosen_pairs)
+            .expect("There should be an unchosen word because there are unchosen CharacterPairs.");
+        unchosen_words.remove(&best_word);
+        for pair in best_word.pairs() {
+            unchosen_pairs.remove(pair);
         }
+        solution.add_word(best_word);
     }
 
     Ok(solution)
@@ -116,14 +100,14 @@ mod tests {
         #[test]
         fn empty() {
             let model = Model::new(io::empty()).expect("reading empty should not fail");
-            let solution = whole_text(&model).expect("test should produce solution");
+            let solution = whole_text(&model).expect("whole_text solver cannot fail");
             assert_eq!(solution.words(), model.words());
         }
 
         #[test]
         fn words() {
             let model = Model::build_test_model("cat abs hutch oven cab cap much coven");
-            let solution = whole_text(&model).expect("test should produce solution");
+            let solution = whole_text(&model).expect("whole_text solver cannot fail");
             assert_eq!(solution.words(), model.words());
         }
     }
@@ -251,9 +235,8 @@ mod tests {
                     "cat abs hutch oven cab cap much coven",
                     vec!["coven", "hutch", "abs", "cap", "cat", "much"],
                 );
-                let solution =
-                    greedy_most_valuable_word(&model).expect("test should produce solution");
-                assert_eq!(solution, expected_solution);
+                let solution = greedy_most_valuable_word(&model);
+                assert_eq!(solution, Ok(expected_solution));
             }
 
             #[test]

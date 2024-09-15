@@ -73,7 +73,7 @@ fn main() -> Result<(), LetterPairsError> {
     let model_start = Instant::now();
     let model = Model::new(reader)?;
     let model_end = Instant::now();
-    let sample = Sample::new(&greedy_most_valuable_word, &model, args.repeat);
+    let sample = Sample::new(greedy_most_valuable_word, &model, args.repeat);
 
     if args.validate {
         let validate_start = Instant::now();
